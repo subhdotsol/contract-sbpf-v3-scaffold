@@ -1,0 +1,43 @@
+[package]
+name = "anchor-vault-client"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+# ---- legacy client (commented out in main.rs) ----
+# anchor-client: high-level Anchor RPC client (program.request().accounts().args().send()).
+# It only builds legacy/v0 transactions, so it was replaced for the v1 client.
+# anchor-client = "1.2.1"
+
+# ---- v1 transaction client ----
+# Anchor traits used to build instructions and read accounts by hand:
+# InstructionData (.data() = 8-byte discriminator + args), ToAccountMetas (accounts list),
+# AccountDeserialize (decode the Counter account), plus Pubkey / Instruction / system_program.
+anchor-lang = "1.2.1"
+
+# The program itself, linked as a library. Gives the program ID (anchor_vault::id()),
+# the generated instruction/accounts structs, COUNTER_SEED, MAX_COUNT and the Counter type.
+# `no-entrypoint` stops the on-chain entrypoint from being compiled into the client binary.
+anchor-vault = { path = "../programs/anchor-vault", features = ["no-entrypoint"] }
+
+# v1::Message, v1::TransactionConfig (CU limit, loaded-accounts size, priority fee in the
+# message header) and VersionedMessage::V1. v1::Message landed in 4.1.
+solana-message = "4.1"
+
+# VersionedTransaction: signs a VersionedMessage::V1 into a sendable transaction.
+solana-transaction = "4.1"
+
+# --- rustc 1.89 pins (old): 4.4 needed rustc 1.98, so the RPC client was held at 4.2 ---
+# solana-rpc-client = "~4.2"
+# solana-rpc-client-api = "~4.2"
+# --- rustc 1.99 (current; required by litesvm 0.18 for SBPF v3 tests) ---
+# Held at 4.3 to match the Agave version litesvm 0.18.1 is built against (same workspace lockfile).
+solana-rpc-client = "~4.3"      # blocking RpcClient: get_latest_blockhash, send_and_confirm_transaction, get_account, get_transaction
+solana-rpc-client-api = "~4.3"  # RPC config types: RpcTransactionConfig { max_supported_transaction_version }, CommitmentConfig, UiTransactionEncoding
+
+# Keypair + read_keypair_file (~/.config/solana/id.json) and the Signer trait.
+solana-keypair = "3.0.1"
+
+# Error handling in main(): Result, .context(), ensure!, bail!.
+anyhow = "1"

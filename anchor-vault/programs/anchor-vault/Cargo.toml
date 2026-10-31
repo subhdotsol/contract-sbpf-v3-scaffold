@@ -1,0 +1,61 @@
+[package]
+name = "anchor-vault"
+version = "0.1.0"
+description = "Created with Anchor"
+edition.workspace = true
+rust-version.workspace = true
+
+[lib]
+# cdylib = the on-chain program (.so built by `cargo build-sbf` / `anchor build`).
+# lib    = a normal Rust library, so tests and the client can import types such as
+#          `anchor_vault::accounts::*`, `anchor_vault::instruction::*`, `state::Counter`.
+crate-type = ["cdylib", "lib"]
+name = "anchor_vault"
+
+[features]
+default = []
+cpi = ["no-entrypoint"]             # for other programs that CPI into this one
+no-entrypoint = []                  # drop the program entrypoint; used by the client so it can link this crate as a library
+no-log-ix-name = []                 # don't log "Instruction: Initialize" etc. (saves CU)
+idl-build = ["anchor-lang/idl-build"] # used by `anchor build` to generate the IDL
+anchor-debug = []
+custom-heap = []
+custom-panic = []
+
+
+[dependencies]
+# Anchor framework: #[program], #[derive(Accounts)], #[account], account (de)serialization,
+# constraints (init, seeds, bump), errors, and the system_program CPI helpers.
+anchor-lang = "1.2.1"
+
+[dev-dependencies]
+# Only used by `cargo test` (tests/test_initialize.rs, tests/test_increment.rs), never on-chain.
+
+# LiteSVM: in-process Solana VM. Loads target/deploy/anchor_vault.so and executes
+# transactions against it without running a validator.
+# --- SBPF v2 setup (old) ---
+# litesvm = "0.10.0"          # could not load SBPF v3 programs (InvalidAccountData)
+# --- SBPF v3 setup (current) ---
+litesvm = "0.18.1"            # loads SBPF v3; needs rustc >= 1.98 (see rust-toolchain.toml)
+
+# Agave program runtime (the BPF loader/VM that LiteSVM embeds). Not used directly by the
+# tests; it is listed only to pin the version. litesvm 0.18.1 is built against Agave 4.3, and
+# Agave 4.4.0 changed APIs it uses (e.g. ProgramCacheEntry::new_builtin), so `~4.3` holds the
+# whole Agave crate family (they pin each other exactly) at 4.3.x.
+# Also required in Cargo.lock: solana-fee = 4.3.2 (`cargo update -p solana-fee --precise 4.3.2`).
+solana-program-runtime = "~4.3"
+
+# Transaction-building types used by the tests. Must be the same versions LiteSVM uses,
+# otherwise `svm.send_transaction(tx)` gets a type from a different crate version.
+# --- SBPF v2 setup (old), matched litesvm 0.10 ---
+# solana-message = "3.0.1"
+# solana-transaction = "3.0.2"
+# --- SBPF v3 setup (current), matched litesvm 0.18 ---
+solana-message = "4.2.4"      # Message / VersionedMessage: the instructions + accounts + blockhash being signed
+solana-transaction = { version = "4.1.5", features = ["verify"] } # VersionedTransaction (signed message); `verify` enables signature checks
+solana-signer = "3.0.0"       # Signer trait: .pubkey() and signing
+solana-keypair = "3.0.1"      # Keypair: random test wallets (payer, attacker)
+
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(target_os, values("solana"))'] }

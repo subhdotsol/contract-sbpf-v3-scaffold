@@ -1,0 +1,10 @@
+[toolchain]
+# --- SBPF v2 setup (old) ---
+# channel = "1.89.0"
+# --- SBPF v3 setup (current) ---
+# litesvm 0.18 pulls Agave 4.x crates that need rustc >= 1.98.
+# Keep `rust-version = "1.89.0"` in the root Cargo.toml: it also applies to the program,
+# which is compiled by the platform-tools rustc (1.95.0-dev for v1.57).
+channel = "1.99.1"
+components = ["rustfmt","clippy"]
+profile = "minimal"

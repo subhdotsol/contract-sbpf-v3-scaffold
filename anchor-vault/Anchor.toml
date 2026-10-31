@@ -1,0 +1,25 @@
+skip_local_validator = true
+
+[toolchain]
+
+[features]
+resolution = true
+skip-lint = false
+
+[programs.localnet]
+anchor_vault = "8Tf2yD9hUxbuv2Dx4jaBNrpz2Aej15ajetzVxqayZzQY"
+
+[provider]
+cluster = "devnet"
+wallet = "~/.config/solana/id.json"
+
+[scripts]
+# --- SBPF v2 setup (old) ---
+# litesvm 0.10 could not load Anchor's default v3 build, so the script rebuilt the program
+# as v2 before running the tests:
+# test = "cargo build-sbf --tools-version v1.57 --arch v2 && cargo test"
+# --- SBPF v3 setup (current) ---
+# litesvm 0.18 loads the v3 .so that `anchor test` builds, so no rebuild is needed.
+test = "cargo test"
+
+[hooks]
