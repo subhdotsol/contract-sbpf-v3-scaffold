@@ -1,11 +1,23 @@
 # anchor-vault: steps after `anchor init`
 
-Toolchain: anchor-cli 1.2.1, solana-cli 4.1.2 (Agave), platform-tools v1.57.
+Built with: anchor-cli 1.2.1, solana-cli 4.1.2 (Agave), platform-tools v1.57.
 Host rustc: started at 1.89.0, now **1.99.1** (pinned in `rust-toolchain.toml`, see section 7).
+
+> **Status on 2026-11-02**
+> - Machine now: anchor-cli **1.2.2** (avm), Agave **4.1.2** active, 4.4.0 also cached in
+>   `~/.local/share/solana/install/releases/`. `Cargo.lock` already resolves
+>   `anchor-lang 1.2.2`, because `"1.2.1"` means `^1.2.1`.
+> - Re-verified with Agave 4.4.0 (section 14). Build, tests, deploy and the v1 client all work,
+>   and the `.so` is byte-identical to the 4.1.2 build.
+> - The v1 client has run on devnet. Signature `5dataz3H...` reads back as `Version: 1`,
+>   `Compute Unit Limit: 50000`, `Priority Fee: 1000 lamports`.
+> - **Starting a new project?** Use `../real-vault/steps.md`. With Anchor 1.2.2, `anchor init`
+>   passes `anchor test` on SBPF v3 with no changes. Most of sections 2-3 and 7 below is history.
 
 Quick map: sections 1-8 are the steps in order. Section 9 is the v1-transaction client,
 section 10 lists every issue and its fix, section 11 is lessons learned, and section 12
-explains every crate in the `Cargo.toml` files.
+explains every crate in the `Cargo.toml` files. Section 13 is a debugging guide, section 14
+covers the Agave 4.4.0 upgrade, and section 15 lists related docs.
 
 ## 1. Scaffold
 
@@ -38,6 +50,11 @@ Cause:
 - The generated dev-dependency `litesvm = "0.10.0"` (solana-sbpf 0.13) cannot load that v3 ELF.
 - Upgrading LiteSVM (0.17+) pulls Agave 4.x crates that need rustc ≥ 1.98, but the project pins 1.89.
 - `anchor test` has no `--arch` flag and `Anchor.toml` has no arch setting.
+
+> Fixed upstream in Anchor 1.2.2: `anchor init` now generates `litesvm = "0.15.0"` plus a
+> `Cargo.lock` that works with rustc 1.89. litesvm 0.15.0 loads the v3 `.so`, so `anchor test`
+> passes on a fresh scaffold (verified 2026-11-02). The problem above only affects projects
+> scaffolded with Anchor 1.2.1 (`litesvm = "0.10.0"`).
 
 ## 3. Fix: rebuild as SBPF v2 inside the test script
 
@@ -217,13 +234,15 @@ Two gotchas hit while applying it:
 Revert to v2: uncomment the v2 lines, comment the v3 lines, delete the `solana-program-runtime`
 line, and run `cargo update`.
 
-**Deploying v3 on-chain** also needs the cluster to have the v3 feature active
-(`enable_sbpf_v3_deployment_and_execution`). Otherwise deployment of a v3 ELF is rejected.
-Check it with:
+**Deploying v3 on-chain** also needs the cluster's v3 feature gate
+(`enable_sbpf_v3_deployment_and_execution`, ID `5cC3foj77CWun58pC51ebHFUWavHWKarWyR5UUik7dnC`).
+On 2026-11-02 it is active on devnet (slot 461,808,000), testnet and mainnet. Check it by ID.
+`solana feature status -u devnet | grep -i sbpf` does **not** show this gate on CLI 4.1.2.
 ```sh
-solana feature status -u devnet | grep -i sbpf
+solana feature status -u devnet 5cC3foj77CWun58pC51ebHFUWavHWKarWyR5UUik7dnC
+# 4.1.2 and 4.4.0: "active since epoch 1069"
 ```
-If v3 is not active, deploy a v2 build instead:
+If a cluster doesn't have v3, deploy a v2 build instead:
 ```sh
 cargo build-sbf --tools-version v1.57 --arch v2
 anchor deploy --provider.cluster devnet
@@ -234,17 +253,22 @@ anchor deploy --provider.cluster devnet
 SBPF ("Solana BPF") is the bytecode format Solana programs compile to. Each version is a set of
 rule changes defined in SIMDs and enabled on a cluster by a feature gate
 (`enable_sbpf_vN_deployment_and_execution`). Versions build on each other: v3 includes everything
-in v2.
+in v2. Gates: v2 `F6UVKh1ujTEFK3en2SyAL3cdVnqko1FVEXWhmdLRu6WP`, v3
+`5cC3foj77CWun58pC51ebHFUWavHWKarWyR5UUik7dnC`. Both are active on devnet, testnet and mainnet
+(2026-11-02). How to read SIMDs and check gates: `../simd.md`.
 
 | | SBPF v2 | SBPF v3 |
 |---|---|---|
-| Main SIMDs | SIMD-0173 (instruction encoding cleanup), SIMD-0174 (dedicated multiply/divide/remainder instruction class, explicit sign extension) | SIMD-0178 (static syscalls), SIMD-0179 (stricter control-flow checks), SIMD-0189 (stricter ELF layout) |
-| Focus | Simpler, more regular instruction set | Simpler, safer, faster program loading and verification |
-| Syscalls | Resolved at load time through ELF relocations (symbol-name hash patched into `call`) | Encoded directly in the instruction (`syscall` with a fixed hash); no runtime relocation |
-| ELF | Relocations still allowed and processed by the loader | Fixed, strictly validated layout; relocations not allowed, so loading is cheaper |
-| Control flow | Basic verification | Functions must be marked as entry points; calls and jumps must land on valid targets |
-| Tooling | `cargo build-sbf --arch v2` | `cargo build-sbf --arch v3` (Anchor 1.2.1's default) |
-| On-chain requirement | v2 feature active | v3 feature active |
+| Main SIMDs (as listed in Agave's gate description) | SIMD-0173 (instruction encoding improvements), SIMD-0174 (wide multiplication, signed division, explicit sign extension) | SIMD-0178 (static syscalls), SIMD-0189 (stricter ELF headers), SIMD-0377 (eBPF ISA compatibility) |
+| Focus | Simpler, more regular instruction set | No runtime relocations, strict ELF layout, ISA aligned with upstream eBPF/LLVM |
+| Syscalls | Resolved at load time through ELF relocations | Static syscalls (SIMD-0178): encoded in the `call` instruction by the murmur32 hash of the name, resolved at link time, no runtime relocation |
+| ELF | Relocations and dynamic sections (`.dynamic`, `.dynsym`, `.rel.dyn`) still processed by the loader | Fixed program headers, `e_entry` must lie in the second program header, section headers ignored (SIMD-0189) |
+| Instruction set | SBPF-specific encodings | Matches the eBPF ISA that LLVM emits (SIMD-0377): reverts some earlier SBPF changes, re-encodes instructions (e.g. `callx` takes its target from the destination register), adds new ones |
+| Tooling | `cargo build-sbf --arch v2` | `cargo build-sbf --arch v3`. Default in `anchor build` 1.2.x and `cargo build-sbf` 4.5.0; **`cargo build-sbf` 4.1.0 defaults to v0** |
+| On-chain requirement | v2 gate active | v3 gate active |
+
+(An earlier version of this table listed "SIMD-0179, stricter control-flow checks". Agave's v3
+gate doesn't mention 0179, and the SIMD repo has no 0179 proposal file.)
 
 In practice for this project:
 - Program source code is identical. Only the compiled `.so` differs (the ELF header `e_flags` byte
@@ -287,12 +311,30 @@ What differs from legacy/v0:
 
 Checks done before writing it:
 - v1 is active on devnet: the feature account `txv1aq4pp281K9um3tnPgkfX8UqtFT6wcVW3hNezGLL` holds
-  an activation slot (`solana feature status` on CLI 4.1.2 doesn't know the feature, so query
-  `getAccountInfo` instead).
+  an activation slot (492,480,000). `solana feature status` doesn't help on CLI 4.1.2:
+  querying this ID gives `Error: Unknown feature`, and the full list shows an older ID,
+  `txv1hPU7...`, as inactive. CLI 4.4.0 shows `active since epoch 1140`. Or query
+  `getAccountInfo` directly (section 13, step 8).
 - The loaded-accounts limit is 256 KiB because the transaction loads the program's ProgramData
   account (~137 KB). A smaller limit fails with `MaxLoadedAccountsDataSizeExceeded`.
 
-Status: builds. **Not yet run against devnet.**
+Status: **works on devnet** (v1 transaction `5dataz3H...` confirmed as `Version: 1`). Also verified
+end to end on a local Agave **4.4.0** validator: initialize → increment → unauthorized rejected,
+each read back as v1.
+
+Reading a v1 transaction with the CLI needs CLI **4.4.0**. CLI 4.1.2 fails with `Transaction
+version (1) is not supported by the requesting client`. `solana-test-validator` **4.1.2**
+rejects final-format v1 transactions (`Transaction did not pass signature verification`), so
+test the client locally only with a 4.4.0 validator:
+```sh
+A=~/.local/share/solana/install/releases/4.4.0/solana-release/bin   # set this in BOTH terminals
+$A/solana-test-validator --reset                                    # terminal 1
+export PATH=$A:$PATH                                                # terminal 2: 4.4.0 CLI (verified)
+solana airdrop 100 -u localhost && anchor deploy --provider.cluster localnet
+cargo run -q -p anchor-vault-client -- http://127.0.0.1:8899
+```
+
+Against devnet (default RPC, or `RPC_URL` / the first argument):
 
 ```sh
 cargo run -q -p anchor-vault-client
@@ -315,6 +357,10 @@ cargo run -q -p anchor-vault-client
 | 11 | litesvm 0.18.1 fails to compile (`new_builtin takes 1 argument`, `Arc<SlotHashes>` mismatch) | litesvm requires `^4.3.0`, so cargo picked Agave 4.4.0, which changed those APIs | `solana-program-runtime = "~4.3"` (holds the exact-pinned Agave family at 4.3.x) |
 | 12 | `SanitizedMessage: SVMStaticMessage` not satisfied | `solana-fee` stayed at 4.4.0 (outside that exact pin) and pulled `solana-svm-transaction` 6.0 next to 5.0 | `cargo update -p solana-fee --precise 4.3.2` |
 | 13 | Tests: `no function try_new found for VersionedTransaction` | Tests used `solana-message`/`solana-transaction` 3.x; LiteSVM uses 4.x types | Bumped to `solana-message 4.2.4`, `solana-transaction 4.1.5` + `verify` |
+| 14 | `solana-test-validator` 4.1.2: v1 client gets `Transaction did not pass signature verification` | The 4.1.2 validator predates the final v1 format | Test locally with the 4.4.0 validator (section 9). devnet/mainnet nodes are already ≥ 4.3.2 |
+| 15 | `solana confirm -v <sig>`: `Transaction version (1) is not supported by the requesting client` | CLI 4.1.2 can't read v1 transactions | CLI 4.4.0, or RPC `getTransaction` with `maxSupportedTransactionVersion: 1` |
+| 16 | `solana feature status \| grep -i sbpf` doesn't show the v3 gate, and SIMD-0385 shows as inactive | CLI 4.1.2's full list omits/mislabels these. Its v1 entry is an old ID | Query by ID: `solana feature status -u devnet <ID>`, or `getAccountInfo` (section 13, step 8) |
+| 17 | A plain `cargo build-sbf` produces a v0 `.so` (`0000 0000`) | `cargo build-sbf` 4.1.0 defaults to `--arch v0` (4.5.0 defaults to v3) | Always pass `--arch v3`. `anchor build` already does |
 
 Commands used to diagnose version problems:
 
@@ -363,7 +409,7 @@ Every crate in the `Cargo.toml` files also has a comment next to it explaining i
 
 | Crate | Section | Used for |
 |---|---|---|
-| `anchor-lang 1.2.1` | dependencies | The program framework: `#[program]`, `#[derive(Accounts)]`, `#[account]`, constraints, errors, system-program CPI |
+| `anchor-lang 1.2.1` (lockfile: 1.2.2) | dependencies | The program framework: `#[program]`, `#[derive(Accounts)]`, `#[account]`, constraints, errors, system-program CPI. `"1.2.1"` means `^1.2.1`, so `Cargo.lock` resolved 1.2.2, the same as the installed CLI. Write `"1.2.2"` to make that explicit |
 | `litesvm 0.18.1` | dev | In-process Solana VM that loads the `.so` and runs the test transactions |
 | `solana-program-runtime ~4.3` | dev | Not used directly; pins the Agave family at 4.3.x so litesvm 0.18.1 compiles |
 | `solana-message 4.2.4` | dev | `Message` / `VersionedMessage` for test transactions |
@@ -504,7 +550,7 @@ in `Cargo.toml`, then `cargo update -p solana-program-runtime`.
 ### Step 8: Is a feature active on the cluster?
 
 ```sh
-solana feature status -u devnet | grep -i sbpf     # SBPF-related features
+solana feature status -u devnet 5cC3foj77CWun58pC51ebHFUWavHWKarWyR5UUik7dnC   # query by ID; the grep'd list misses gates
 # Features unknown to your CLI version: read the feature account directly.
 # "value": null (account missing) = inactive; data present = activated.
 curl -s https://api.devnet.solana.com -X POST -H "Content-Type: application/json" \
@@ -521,3 +567,43 @@ curl -s https://api.devnet.solana.com -X POST -H "Content-Type: application/json
 4. Change one thing: one `Cargo.toml` line or one `--precise` pin.
 5. `cargo build --tests --workspace`, then `anchor test --skip-deploy`.
 6. Check the SBPF byte of the `.so` you test and the one you deploy.
+
+## 14. Upgrading Agave 4.1.2 → 4.4.0 (verified 2026-11-02)
+
+How it was tested: a copy of this project and of `real-vault`, with the official Agave 4.4.0
+release first on `PATH` (`solana`, `cargo build-sbf` 4.5.0, `solana-test-validator`), using
+anchor-cli 1.2.1. A fresh Anchor 1.2.2 scaffold was also verified on 4.4.0
+(`../real-vault/steps.md`).
+
+| Step | anchor-vault | real-vault |
+|---|---|---|
+| `anchor build` | ✅ v3, IDL generated | ✅ v3 |
+| `anchor test --skip-deploy` | ✅ 4/4 | ✅ 1/1 |
+| `anchor deploy --provider.cluster localnet` (4.4.0 validator) | ✅ | ✅ |
+| v1 client against the 4.4.0 validator | ✅ "all checks passed" | – |
+| `.so` SHA-256 vs the 4.1.2 build | identical | identical |
+
+The `.so` doesn't change because `anchor build` passes `--tools-version v1.57 --arch v3`
+itself. The devnet deployment doesn't need redeploying.
+
+```sh
+agave-install init 4.4.0     # upgrade (`agave-install update` won't cross minor versions)
+agave-install init 4.1.2     # roll back
+```
+
+After upgrading:
+- `avm solana install` with **no version** switches back to 4.1.2, because avm maps Anchor
+  1.2.x → Solana 4.1.2. Pass `4.4.0` explicitly.
+- A bare `cargo build-sbf` now builds v3 instead of v0.
+- New: the local validator accepts v1, `solana confirm -v` reads v1, and `solana feature status`
+  recognizes `txv1aq4pp...`.
+
+## 15. Related docs in this repo
+
+| File | Use it for |
+|---|---|
+| `../real-vault/steps.md` | **Start a new Anchor project** from scratch (exact commands, verified) |
+| `../pinocchio.md` | Start a Pinocchio project (SBPF v3 + v1, three-workspace layout) |
+| `../commands.md` | Upgrade, downgrade, pin or delete Anchor / Agave / platform-tools / Rust / crates |
+| `../deps.md` | Method for solving dependency errors + what works with what |
+| `../simd.md` | Reading SIMDs, finding feature-gate IDs, checking activation |
