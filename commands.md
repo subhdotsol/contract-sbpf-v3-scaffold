@@ -1,13 +1,13 @@
 # Version management commands: Anchor, Agave/Solana, platform-tools, Rust, Cargo, Pinocchio
 
-Checked on 2026-11-02 against the installed tools: avm 1.2.2, anchor-cli 1.2.1, agave-install
+Checked on 2026-11-02 against the installed tools: avm 1.2.2, anchor-cli 1.2.1 (now 1.2.2), agave-install
 4.1.2, cargo-build-sbf 4.1.0, rustup 1.29.2, cargo 1.99.1. Read-only commands were run. Commands
 that install or remove things were checked against each tool's `--help`, not run.
 
 ## 0. What am I on right now?
 
 ```sh
-anchor --version                     # anchor-cli 1.2.1
+anchor --version                     # anchor-cli 1.2.2
 avm list                             # all Anchor versions; marks (installed) / (current) / (latest)
 solana --version                     # solana-cli 4.1.2 (Agave)
 agave-install info                   # active Solana release + download URL
@@ -86,7 +86,7 @@ avm platform-tools install [v1.58]
 avm platform-tools list / uninstall <ver>
 ```
 
-Anchor 1.2.2 (latest) still maps to Solana 4.1.2. In anchor-cli 1.2.1, `anchor build` passes
+Anchor 1.2.2 (latest) still maps to Solana 4.1.2. In anchor-cli 1.2.1 and 1.2.2, `anchor build` passes
 these flags through to `cargo build-sbf`: `--tools-version` (default `v1.57`) and `--arch`
 (default `v3`). Example: `anchor build --tools-version v1.58 --arch v3`. `anchor test` has no
 `--arch`. To control the build `anchor test` uses, run `cargo build-sbf` from `[scripts]`

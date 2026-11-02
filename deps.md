@@ -183,7 +183,8 @@ These never show up in `Cargo.lock`. Check the binary, the program that loads it
 | Crate | Version | Needs |
 |---|---|---|
 | litesvm | 0.18.1 | Agave **4.3.x** (`solana-program-runtime ~4.3`, `solana-fee =4.3.2`), solana-address **~2.7**, solana-message 4.2.4+, solana-transaction 4.1.5+, solana-keypair 3.1.2, solana-signer 3.0.1, solana-instruction ~3.5; rustc ≥ 1.97.1 (Agave crates ≥ 1.98) |
-| litesvm | 0.10.0 | solana 3.x crates; loads SBPF ≤ v2 only |
+| litesvm | 0.15.0 | Default in the Anchor 1.2.2 scaffold. Agave 4.1.2 crates, solana-message 4.3, rustc 1.89 (scaffold `Cargo.lock`). Loads SBPF v3 and runs v1 transactions (verified) |
+| litesvm | 0.10.0 | Default in the Anchor 1.2.1 scaffold. Solana 3.x crates; loads SBPF ≤ v2 only |
 | mollusk-svm | 0.16.4 | requires Agave `^4.3` and doesn't pin solana-address; not compile-tested here |
 
 ### Client side (host rustc)
